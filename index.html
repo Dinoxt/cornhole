@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cornhole Toss - Vertical Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700;800&family=Inter:wght@600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1a1c20;
+            font-family: 'Fredoka', 'Inter', sans-serif;
+            touch-action: none;
+        }
+        #game-wrapper {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        /* Turn Glow Vignette (matches reference screenshots) */
+        .turn-glow {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            transition: box-shadow 0.45s ease, opacity 0.45s ease;
+            z-index: 15;
+        }
+        .glow-blue {
+            box-shadow: inset 0 0 35px 14px rgba(0, 210, 255, 0.85), inset 0 0 90px 25px rgba(0, 184, 255, 0.35);
+        }
+        .glow-red {
+            box-shadow: inset 0 0 35px 14px rgba(255, 82, 71, 0.85), inset 0 0 90px 25px rgba(246, 91, 82, 0.35);
+        }
+        .glow-none {
+            box-shadow: inset 0 0 0 0 rgba(0,0,0,0);
+            opacity: 0;
+        }
+
+        /* Text stroke matching "Bot's Turn" banner in screenshots */
+        .stroke-banner {
+            color: #ffffff;
+            -webkit-text-stroke: 3px #4a5568;
+            paint-order: stroke fill;
+            text-shadow: 0 5px 14px rgba(0,0,0,0.28);
+        }
+
+        /* Arcade HUD styling for Top Menu & Scoreboard */
+        .hud-menu-btn {
+            background: linear-gradient(180deg, #4b5563 0%, #2d343c 100%);
+            border: 3px solid #000000;
+            box-shadow: 0 3px 0 #000000;
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+        }
+        .hud-menu-btn:hover {
+            background: linear-gradient(180deg, #576272 0%, #37404a 100%);
+        }
+        .hud-menu-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #000000;
+        }
+        .hud-score-card {
+            background: #FCE1B6;
+            border: 3.5px solid #000000;
+            box-shadow: 0 5px 0 #000000, 0 8px 18px rgba(0,0,0,0.28);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+    <!-- Main Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Neon Screen Border Glow for Active Turn -->
+    <div id="turnGlow" class="turn-glow glow-none"></div>
+
+    <!-- Top Center Side-by-Side Menu + Redesigned Scoreboard -->
+    <div class="absolute top-2.5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 w-max">
+        <!-- Menu Button -->
+        <button id="exitBtn" class="hud-menu-btn px-4 py-2 rounded-full text-[#FDB927] font-extrabold text-xs md:text-sm tracking-widest flex items-center gap-1.5 uppercase cursor-pointer h-full">
+            <svg class="w-3.5 h-3.5 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+            <span>MENU</span>
+        </button>
+
+        <!-- Redesigned Arcade Scoreboard Card -->
+        <div class="hud-score-card p-1 rounded-2xl flex items-center gap-1.5">
+            <!-- Red Score Badge -->
+            <div class="bg-[#F65B52] border-2 border-black rounded-xl px-3.5 py-0.5 flex items-center gap-2 shadow-[inset_0_-3px_0_rgba(0,0,0,0.2)]">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-white/90">RED</span>
+                <span id="scoreRed" class="text-xl md:text-2xl font-extrabold text-white drop-shadow-[0_2px_0_rgba(0,0,0,0.4)]">0</span>
+            </div>
+
+            <!-- VS Divider -->
+            <span class="text-xs font-extrabold text-[#3E454C] px-1">VS</span>
+
+            <!-- Blue Score Badge -->
+            <div class="bg-[#00B8FF] border-2 border-black rounded-xl px-3.5 py-0.5 flex items-center gap-2 shadow-[inset_0_-3px_0_rgba(0,0,0,0.2)]">
+                <span id="scoreBlue" class="text-xl md:text-2xl font-extrabold text-white drop-shadow-[0_2px_0_rgba(0,0,0,0.4)]">0</span>
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-white/90">BLUE</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Quick Controls (View Angle, Sound) -->
+    <div class="absolute top-3 left-3 z-20 flex items-center gap-2">
+        <button id="layoutBtn" title="Switch Court View" class="bg-[#3E454C]/90 hover:bg-[#2c3136] text-white text-xs md:text-sm font-bold px-3 py-1.5 rounded-full border-2 border-black shadow flex items-center gap-1.5 transition active:scale-95">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+            </svg>
+            <span id="layoutBtnLabel">Full Court</span>
+        </button>
+        <button id="soundBtn" title="Toggle Sound" class="bg-[#3E454C]/90 hover:bg-[#2c3136] text-white p-2 rounded-full border-2 border-black shadow transition active:scale-95">
+            <svg id="soundOnIcon" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+            </svg>
+            <svg id="soundOffIcon" class="w-4 h-4 hidden" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Turn Banner Overlay ("Bot's Turn" / "Red's Turn") -->
+    <div id="turnBanner" class="absolute top-28 left-1/2 -translate-x-1/2 z-20 pointer-events-none transition-all duration-300 opacity-0 scale-90">
+        <div id="turnBannerText" class="text-3xl md:text-5xl font-extrabold tracking-wide stroke-banner whitespace-nowrap">
+            Red's Turn
+        </div>
+    </div>
+
+    <!-- Floating Score Popup ("+3 HOLE!", "+1 BOARD") -->
+    <div id="PopupContainer" class="absolute inset-0 pointer-events-none z-20 overflow-hidden"></div>
+
+    <!-- Start / Mode Selection Modal -->
+    <div id="menuModal" class="absolute inset-0 z-30 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-[#FCE1B6] border-4 border-black rounded-3xl max-w-lg w-full p-5 md:p-7 shadow-[0_12px_0_#000] relative overflow-hidden">
+            <!-- Decorative mini board header -->
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-14 rounded-lg bg-[#48C5A5] border-4 border-black relative flex items-start justify-center pt-2 shadow-md">
+                        <div class="w-5 h-5 rounded-full bg-[#965D47] border-2 border-black"></div>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-extrabold text-gray-900 leading-none">CORNHOLE</h1>
+                        <p class="text-xs md:text-sm font-bold text-[#965D47] mt-0.5">STRAIGHT TOSS</p>
+                    </div>
+                </div>
+                <div class="bg-[#3E454C] text-white text-xs font-bold px-3 py-1.5 rounded-xl border-2 border-black">
+                    FIRST TO <span id="winTargetDisplay">11</span> PTS
+                </div>
+            </div>
+
+            <!-- Game Mode Buttons -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <button id="btnVsBot" class="group bg-[#00B8FF] hover:bg-[#00a3e0] text-white border-4 border-black rounded-2xl p-4 text-left shadow-[0_5px_0_#000] active:translate-y-1 active:shadow-[0_1px_0_#000] transition">
+                    <div class="flex items-center justify-between">
+                        <span class="text-lg md:text-xl font-extrabold">1P vs BOT</span>
+                        <span class="text-2xl">🤖</span>
+                    </div>
+                    <p class="text-xs font-semibold text-white/90 mt-1">Play Red against smart AI Blue</p>
+                </button>
+
+                <button id="btn2Player" class="group bg-[#F65B52] hover:bg-[#e0483f] text-white border-4 border-black rounded-2xl p-4 text-left shadow-[0_5px_0_#000] active:translate-y-1 active:shadow-[0_1px_0_#000] transition">
+                    <div class="flex items-center justify-between">
+                        <span class="text-lg md:text-xl font-extrabold">2 PLAYERS</span>
+                        <span class="text-2xl">⚔️</span>
+                    </div>
+                    <p class="text-xs font-semibold text-white/90 mt-1">Pass &amp; Play on Laptop or Phone</p>
+                </button>
+            </div>
+
+            <!-- Options Row -->
+            <div class="bg-[#F5CFA0] border-2 border-black/20 rounded-2xl p-3.5 mb-4 space-y-2.5">
+                <div class="flex items-center justify-between text-xs md:text-sm font-bold text-gray-800">
+                    <span>Bot Difficulty:</span>
+                    <div class="flex gap-1.5">
+                        <button data-diff="easy" class="diff-btn px-3 py-1 rounded-lg border-2 border-black bg-white text-gray-800">Easy</button>
+                        <button data-diff="medium" class="diff-btn px-3 py-1 rounded-lg border-2 border-black bg-[#FDB927] text-black">Medium</button>
+                        <button data-diff="hard" class="diff-btn px-3 py-1 rounded-lg border-2 border-black bg-white text-gray-800">Pro</button>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between text-xs md:text-sm font-bold text-gray-800">
+                    <span>Winning Score:</span>
+                    <div class="flex gap-1.5">
+                        <button data-target="7" class="target-btn px-3 py-1 rounded-lg border-2 border-black bg-white text-gray-800">7 pts</button>
+                        <button data-target="11" class="target-btn px-3 py-1 rounded-lg border-2 border-black bg-[#48C5A5] text-black">11 pts</button>
+                        <button data-target="21" class="target-btn px-3 py-1 rounded-lg border-2 border-black bg-white text-gray-800">21 pts</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- How to Play Summary -->
+            <div class="text-xs font-semibold text-gray-700 bg-white/70 rounded-xl p-3 border-2 border-black/10 flex flex-wrap items-center justify-between gap-2">
+                <div>🎯 <b>Drag / Flick</b> the bag up toward the board (or pull down like a slingshot!)</div>
+                <div class="flex gap-3">
+                    <span class="text-[#965D47] font-extrabold">● Hole = 3 pts</span>
+                    <span class="text-[#345977] font-extrabold">■ Board = 1 pt</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Victory Modal -->
+    <div id="winModal" class="hidden absolute inset-0 z-30 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-[#FCE1B6] border-4 border-black rounded-3xl max-w-md w-full p-6 text-center shadow-[0_12px_0_#000]">
+            <div id="winBadge" class="w-16 h-16 mx-auto mb-3 rounded-2xl border-4 border-black flex items-center justify-center text-3xl shadow-md bg-[#F65B52]">
+                🏆
+            </div>
+            <h2 id="winTitle" class="text-3xl font-extrabold text-gray-900">RED WINS!</h2>
+            <p id="winSubtitle" class="text-sm font-bold text-gray-700 mt-1 mb-5">Final Score: 11 - 6</p>
+            <div class="flex gap-3 justify-center">
+                <button id="playAgainBtn" class="flex-1 bg-[#48C5A5] hover:bg-[#3bb394] text-black font-extrabold py-3 px-5 rounded-2xl border-4 border-black shadow-[0_4px_0_#000] active:translate-y-1 active:shadow-none transition">
+                    PLAY AGAIN
+                </button>
+                <button id="mainMenuBtn" class="bg-white hover:bg-gray-100 text-gray-800 font-extrabold py-3 px-5 rounded-2xl border-4 border-black shadow-[0_4px_0_#000] active:translate-y-1 active:shadow-none transition">
+                    MENU
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * CORNHOLE VERTICAL EDITION (Top-to-Bottom / Bottom-to-Top Orientation)
+ * The internal physics engine operates along X (-385 to +225), and the canvas camera
+ * rotates -90 degrees so the thrower is at the BOTTOM and the board is at the TOP.
+ */
+
+window.onload = function () {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // UI Elements
+    const scoreRedEl = document.getElementById('scoreRed');
+    const scoreBlueEl = document.getElementById('scoreBlue');
+    const turnGlowEl = document.getElementById('turnGlow');
+    const turnBannerEl = document.getElementById('turnBanner');
+    const turnBannerTextEl = document.getElementById('turnBannerText');
+    const menuModal = document.getElementById('menuModal');
+    const winModal = document.getElementById('winModal');
+    const winTitle = document.getElementById('winTitle');
+    const winSubtitle = document.getElementById('winSubtitle');
+    const winBadge = document.getElementById('winBadge');
+    const layoutBtn = document.getElementById('layoutBtn');
+    const layoutBtnLabel = document.getElementById('layoutBtnLabel');
+    const soundBtn = document.getElementById('soundBtn');
+    const soundOnIcon = document.getElementById('soundOnIcon');
+    const soundOffIcon = document.getElementById('soundOffIcon');
+
+    // ==========================================
+    // SOUND ENGINE (Synthesized Web Audio API)
+    // ==========================================
+    const Sound = {
+        ctx: null,
+        enabled: true,
+        init() {
+            if (!this.ctx) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) this.ctx = new AudioCtx();
+            }
+            if (this.ctx && this.ctx.state === 'suspended') {
+                this.ctx.resume();
+            }
+        },
+        playWhoosh() {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(220, now);
+            osc.frequency.exponentialRampToValueAtTime(85, now + 0.22);
+            gain.gain.setValueAtTime(0.18, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.23);
+        },
+        playBoardHit(isWood = true) {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = isWood ? 'triangle' : 'sine';
+            osc.frequency.setValueAtTime(isWood ? 155 : 95, now);
+            osc.frequency.exponentialRampToValueAtTime(42, now + 0.14);
+            gain.gain.setValueAtTime(isWood ? 0.32 : 0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.16);
+        },
+        playBagBump() {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(190, now);
+            osc.frequency.exponentialRampToValueAtTime(75, now + 0.09);
+            gain.gain.setValueAtTime(0.22, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        },
+        playHoleScore() {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+            const notes = [523.25, 659.25, 783.99, 1046.5];
+            notes.forEach((freq, idx) => {
+                const now = this.ctx.currentTime + idx * 0.065;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, now);
+                gain.gain.setValueAtTime(0.22, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.26);
+            });
+        },
+        playRoundEnd() {
+            if (!this.enabled) return;
+            this.init();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            [440, 554.37, 659.25].forEach((f, i) => {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(f, now + i * 0.08);
+                gain.gain.setValueAtTime(0.16, now + i * 0.08);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now + i * 0.08);
+                osc.stop(now + i * 0.08 + 0.32);
+            });
+        }
+    };
+
+    // ==========================================
+    // WORLD COORDINATE SYSTEM & CONSTANTS
+    // ==========================================
+    const BOARD = {
+        width: 310,   // Length along the throw axis
+        height: 204,  // Width across the court
+        cornerRadius: 22,
+        holeOffsetFromFront: 225, // Hole is near the back edge of the board
+        holeRadius: 37,
+        bagRadius: 24
+    };
+
+    const COLORS = {
+        outerSalmon: '#F49B7E',
+        courtSand: '#FCE1B6',
+        borderBlack: '#080808',
+        foulLine: '#3E454C',
+        launchPad: '#FDCB82',
+        boardTeal: '#48C5A5',
+        boardBlueStripe: '#345977',
+        boardYellowEdge: '#FDB927',
+        holeBrown: '#965D47',
+        holeInnerShadow: '#7B4A37',
+        redBag: '#F65B52',
+        redBagDark: '#D9433A',
+        blueBag: '#00B8FF',
+        blueBagDark: '#0095D9',
+        hudBox: '#3E454C'
+    };
+
+    // Game State
+    const state = {
+        mode: 'bot',           // 'bot' or '2p'
+        botDifficulty: 'medium', // 'easy', 'medium', 'hard'
+        winTarget: 11,
+        viewStyle: 'landscape', // 'landscape' (Full Court) or 'classic' (Close Zoom)
+        phase: 'menu',         // 'menu', 'aiming', 'flying', 'sliding', 'zoom_inspect', 'round_end', 'game_over'
+        turn: 'red',           // 'red' or 'blue'
+        roundStarter: 'red',
+        redBagsLeft: 4,
+        blueBagsLeft: 4,
+        redBaseScore: 0,       // Confirmed score from previous rounds
+        blueBaseScore: 0,
+        bags: [],              // Bags currently in play this round
+        activeBag: null,       // Currently aiming/flying bag
+        dustPuffs: [],         // Landing dust particles
+        trailPoints: [],       // Comet motion trail behind flying bag
+        camera: {
+            x: 0,
+            y: 0,
+            zoom: 1,
+            angle: 0,
+            targetX: 0,
+            targetY: 0,
+            targetZoom: 1,
+            targetAngle: 0
+        },
+        drag: {
+            active: false,
+            startX: 0,
+            startY: 0,
+            currX: 0,
+            currY: 0,
+            points: []         // For smooth swipe velocity detection
+        },
+        botTimer: 0
+    };
+
+    // Canonical Court Layout (rotated -90 deg in render so +X is UP on screen, +Y is RIGHT on screen)
+    const COURT = {
+        halfLength: 550,
+        halfWidth: 265,
+        launchX: -385,
+        launchY: 0,
+        launchRadius: 88,
+        foulLineX: -180,
+        foulLineHalfLen: 195,
+        boardCenterX: 225,
+        boardCenterY: 0,
+        get boardFrontX() { return this.boardCenterX - BOARD.width / 2; },
+        get boardBackX() { return this.boardCenterX + BOARD.width / 2; },
+        get holeX() { return this.boardFrontX + BOARD.holeOffsetFromFront; },
+        get holeY() { return 0; }
+    };
+
+    // ==========================================
+    // RESIZE & VIEWPORT HANDLING
+    // ==========================================
+    let viewportW = window.innerWidth;
+    let viewportH = window.innerHeight;
+    let baseScale = 1;
+
+    function handleResize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        viewportW = window.innerWidth;
+        viewportH = window.innerHeight;
+        canvas.width = viewportW * dpr;
+        canvas.height = viewportH * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // Scale for vertical top-to-bottom view (court width is 640, court height is 1220)
+        const scaleX = viewportW / 640;
+        const scaleY = viewportH / 1220;
+        baseScale = Math.min(scaleX, scaleY) * 0.96;
+    }
+
+    window.addEventListener('resize', handleResize);
+    handleResize();
+
+    // ==========================================
+    // COORDINATE CONVERSIONS (SCREEN <-> WORLD)
+    // ==========================================
+    // Since we rotate the canvas by -90 degrees (-Math.PI / 2):
+    // screenX = cx + z * (worldY - camera.y)
+    // screenY = cy - z * (worldX - camera.x)
+    function screenToLocalThrower(screenX, screenY) {
+        const cx = viewportW / 2;
+        const cy = viewportH / 2;
+        const z = baseScale * state.camera.zoom;
+
+        const dx = (screenX - cx) / z;
+        const dy = (screenY - cy) / z;
+
+        const worldX = -dy + state.camera.x;
+        const worldY = dx + state.camera.y;
+
+        return {
+            x: worldX,
+            y: worldY
+        };
+    }
+
+    // ==========================================
+    // SCORE CALCULATION (LIVE BOARD + HOLE)
+    // ==========================================
+    function calculateLiveRoundPoints() {
+        let redPts = 0;
+        let bluePts = 0;
+        for (const b of state.bags) {
+            if (b.inHole) {
+                if (b.team === 'red') redPts += 3;
+                else bluePts += 3;
+            } else if (b.onBoard) {
+                if (b.team === 'red') redPts += 1;
+                else bluePts += 1;
+            }
+        }
+        return { redPts, bluePts };
+    }
+
+    function updateScoreHUD() {
+        const { redPts, bluePts } = calculateLiveRoundPoints();
+        scoreRedEl.textContent = state.redBaseScore + redPts;
+        scoreBlueEl.textContent = state.blueBaseScore + bluePts;
+    }
+
+    function checkBagOnBoard(bag) {
+        if (bag.inHole) return false;
+        const halfW = BOARD.width / 2;
+        const halfH = BOARD.height / 2;
+        const dx = Math.abs(bag.x - COURT.boardCenterX);
+        const dy = Math.abs(bag.y - COURT.boardCenterY);
+        return dx <= halfW + 4 && dy <= halfH + 4;
+    }
+
+    // ==========================================
+    // FLOATING TEXT POPUPS ("+3", "+1")
+    // ==========================================
+    function spawnScorePopup(text, colorHex) {
+        const container = document.getElementById('PopupContainer');
+        const el = document.createElement('div');
+        el.className = 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-extrabold text-3xl md:text-5xl transition-all duration-700 pointer-events-none stroke-banner';
+        el.style.color = colorHex;
+        el.textContent = text;
+        container.appendChild(el);
+
+        requestAnimationFrame(() => {
+            el.style.transform = 'translate(-50%, -140%) scale(1.15)';
+            el.style.opacity = '0';
+        });
+        setTimeout(() => el.remove(), 750);
+    }
+
+    // ==========================================
+    // CAMERA TARGETS (FULL COURT VS BOARD ZOOM)
+    // ==========================================
+    function setCameraForAiming() {
+        state.camera.targetX = 0;
+        state.camera.targetY = 0;
+        state.camera.targetZoom = state.viewStyle === 'classic' ? 1.12 : 1.0;
+    }
+
+    function setCameraForBoardZoom() {
+        state.camera.targetX = COURT.boardCenterX;
+        state.camera.targetY = 0;
+        state.camera.targetZoom = 1.5;
+    }
+
+    // ==========================================
+    // TURN & ROUND MANAGEMENT
+    // ==========================================
+    function showTurnBanner(text, team) {
+        turnBannerTextEl.textContent = text;
+        turnBannerEl.classList.remove('opacity-0', 'scale-90');
+        turnBannerEl.classList.add('opacity-100', 'scale-100');
+
+        turnGlowEl.classList.remove('glow-blue', 'glow-red', 'glow-none');
+        turnGlowEl.classList.add(team === 'blue' ? 'glow-blue' : 'glow-red');
+
+        setTimeout(() => {
+            turnBannerEl.classList.remove('opacity-100', 'scale-100');
+            turnBannerEl.classList.add('opacity-0', 'scale-90');
+        }, 1250);
+    }
+
+    function spawnActiveBag() {
+        state.activeBag = {
+            team: state.turn,
+            x: COURT.launchX,
+            y: COURT.launchY,
+            z: 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            angle: (Math.random() - 0.5) * 0.18,
+            vAngle: 0,
+            inHole: false,
+            holeScale: 1,
+            onBoard: false
+        };
+        state.trailPoints = [];
+    }
+
+    function startTurn(team) {
+        state.turn = team;
+        state.phase = 'aiming';
+        setCameraForAiming();
+        spawnActiveBag();
+
+        const label = team === 'red'
+            ? (state.mode === 'bot' ? "Your Turn" : "Red's Turn")
+            : (state.mode === 'bot' ? "Bot's Turn" : "Blue's Turn");
+        showTurnBanner(label, team);
+
+        if (team === 'blue' && state.mode === 'bot') {
+            state.botTimer = 0.85;
+        }
+    }
+
+    function advanceTurnOrRound() {
+        updateScoreHUD();
+
+        const { redPts, bluePts } = calculateLiveRoundPoints();
+        const totalRed = state.redBaseScore + redPts;
+        const totalBlue = state.blueBaseScore + bluePts;
+
+        if (state.redBagsLeft === 0 && state.blueBagsLeft === 0) {
+            state.phase = 'round_end';
+            state.redBaseScore = totalRed;
+            state.blueBaseScore = totalBlue;
+
+            setTimeout(() => {
+                if (state.redBaseScore >= state.winTarget || state.blueBaseScore >= state.winTarget) {
+                    if (state.redBaseScore !== state.blueBaseScore) {
+                        endGame();
+                        return;
+                    }
+                }
+                Sound.playRoundEnd();
+                state.bags = [];
+                state.redBagsLeft = 4;
+                state.blueBagsLeft = 4;
+                state.roundStarter = state.roundStarter === 'red' ? 'blue' : 'red';
+                startTurn(state.roundStarter);
+            }, 1100);
+            return;
+        }
+
+        const nextTeam = state.turn === 'red'
+            ? (state.blueBagsLeft > 0 ? 'blue' : 'red')
+            : (state.redBagsLeft > 0 ? 'red' : 'blue');
+
+        startTurn(nextTeam);
+    }
+
+    function startNewMatch(mode) {
+        state.mode = mode;
+        state.redBaseScore = 0;
+        state.blueBaseScore = 0;
+        state.redBagsLeft = 4;
+        state.blueBagsLeft = 4;
+        state.bags = [];
+        state.dustPuffs = [];
+        state.trailPoints = [];
+        state.roundStarter = 'red';
+        updateScoreHUD();
+        menuModal.classList.add('hidden');
+        winModal.classList.add('hidden');
+        startTurn('red');
+    }
+
+    function endGame() {
+        state.phase = 'game_over';
+        turnGlowEl.className = 'turn-glow glow-none';
+        const redWon = state.redBaseScore > state.blueBaseScore;
+        winTitle.textContent = redWon
+            ? (state.mode === 'bot' ? 'YOU WIN!' : 'RED WINS!')
+            : (state.mode === 'bot' ? 'BOT WINS!' : 'BLUE WINS!');
+        winSubtitle.textContent = `Final Score: ${state.redBaseScore} - ${state.blueBaseScore}`;
+        winBadge.style.backgroundColor = redWon ? COLORS.redBag : COLORS.blueBag;
+        Sound.playHoleScore();
+        winModal.classList.remove('hidden');
+    }
+
+    // ==========================================
+    // THROW LAUNCH & BOT AI
+    // ==========================================
+    function launchBag(vx, vy, vz) {
+        if (!state.activeBag || state.phase !== 'aiming') return;
+
+        const bag = state.activeBag;
+        bag.vx = vx;
+        bag.vy = vy;
+        bag.vz = vz;
+        bag.vAngle = (Math.random() - 0.5) * 4.5;
+
+        if (state.turn === 'red') state.redBagsLeft--;
+        else state.blueBagsLeft--;
+
+        state.phase = 'flying';
+        Sound.playWhoosh();
+    }
+
+    function executeBotThrow() {
+        if (state.phase !== 'aiming' || state.turn !== 'blue') return;
+
+        let spreadX = 45;
+        let spreadY = 38;
+        if (state.botDifficulty === 'easy') {
+            spreadX = 95;
+            spreadY = 75;
+        } else if (state.botDifficulty === 'hard') {
+            spreadX = 22;
+            spreadY = 16;
+        }
+
+        const targetLandX = 185 + (Math.random() - 0.5) * spreadX;
+        const targetLandY = (Math.random() - 0.5) * spreadY;
+        const flightTime = 0.92;
+        const gravity = 980;
+        const vz = 0.5 * gravity * flightTime;
+        const dx = targetLandX - state.activeBag.x;
+        const dy = targetLandY - state.activeBag.y;
+
+        const vx = dx / flightTime;
+        const vy = dy / flightTime;
+
+        launchBag(vx, vy, vz);
+    }
+
+    // ==========================================
+    // INPUT HANDLING (MOUSE & TOUCH)
+    // ==========================================
+    function onPointerDown(clientX, clientY) {
+        if (state.phase !== 'aiming') return;
+        if (state.mode === 'bot' && state.turn === 'blue') return;
+
+        const pt = screenToLocalThrower(clientX, clientY);
+        const distToLaunch = Math.hypot(pt.x - COURT.launchX, pt.y - COURT.launchY);
+
+        if (distToLaunch < COURT.launchRadius * 1.9 || pt.x < COURT.foulLineX + 40) {
+            state.drag.active = true;
+            state.drag.startX = pt.x;
+            state.drag.startY = pt.y;
+            state.drag.currX = pt.x;
+            state.drag.currY = pt.y;
+            state.drag.points = [{ x: pt.x, y: pt.y, t: performance.now() }];
+        }
+    }
+
+    function onPointerMove(clientX, clientY) {
+        if (!state.drag.active || !state.activeBag) return;
+        const pt = screenToLocalThrower(clientX, clientY);
+        state.drag.currX = pt.x;
+        state.drag.currY = pt.y;
+
+        const now = performance.now();
+        state.drag.points.push({ x: pt.x, y: pt.y, t: now });
+        if (state.drag.points.length > 8) state.drag.points.shift();
+
+        const dx = pt.x - state.drag.startX;
+        const dy = pt.y - state.drag.startY;
+        const maxOffset = 42;
+        const dist = Math.hypot(dx, dy);
+        const clamp = dist > maxOffset ? maxOffset / dist : 1;
+        state.activeBag.x = COURT.launchX + dx * clamp * 0.45;
+        state.activeBag.y = COURT.launchY + dy * clamp * 0.45;
+    }
+
+    function onPointerUp() {
+        if (!state.drag.active || !state.activeBag) return;
+        state.drag.active = false;
+
+        const totalDx = state.drag.currX - state.drag.startX;
+        const totalDy = state.drag.currY - state.drag.startY;
+        const totalDist = Math.hypot(totalDx, totalDy);
+
+        if (totalDist < 18) {
+            state.activeBag.x = COURT.launchX;
+            state.activeBag.y = COURT.launchY;
+            return;
+        }
+
+        // Support BOTH Upward Flick/Drag toward the top board AND Pull-Down Slingshot
+        let aimDx = totalDx;
+        let aimDy = totalDy;
+        if (aimDx < -15) {
+            aimDx = -aimDx * 1.35;
+            aimDy = -aimDy * 1.35;
+        }
+
+        let swipeSpeedBonus = 1.0;
+        if (state.drag.points.length >= 2) {
+            const first = state.drag.points[0];
+            const last = state.drag.points[state.drag.points.length - 1];
+            const dt = Math.max(16, last.t - first.t);
+            const flickVel = Math.hypot(last.x - first.x, last.y - first.y) / dt;
+            swipeSpeedBonus = Math.min(1.45, Math.max(0.85, 0.78 + flickVel * 0.22));
+        }
+
+        const pullPower = Math.min(1.32, Math.max(0.48, (Math.hypot(aimDx, aimDy) / 175) * swipeSpeedBonus));
+        const angle = Math.atan2(aimDy, Math.max(30, aimDx));
+        const clampedAngle = Math.max(-0.48, Math.min(0.48, angle));
+
+        const speed = 610 * pullPower;
+        const vx = Math.cos(clampedAngle) * speed;
+        const vy = Math.sin(clampedAngle) * speed;
+        const vz = 430 + pullPower * 45;
+
+        launchBag(vx, vy, vz);
+    }
+
+    canvas.addEventListener('mousedown', e => onPointerDown(e.clientX, e.clientY));
+    window.addEventListener('mousemove', e => onPointerMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup', () => onPointerUp());
+
+    canvas.addEventListener('touchstart', e => {
+        if (e.touches.length > 0) {
+            onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    }, { passive: true });
+
+    window.addEventListener('touchmove', e => {
+        if (e.touches.length > 0) {
+            onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    }, { passive: true });
+
+    window.addEventListener('touchend', () => onPointerUp());
+
+    // ==========================================
+    // PHYSICS UPDATE (FLIGHT, DUST PUFFS, SLIDING & HOLE)
+    // ==========================================
+    function spawnDustPuffs(x, y) {
+        for (let i = 0; i < 5; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const spd = 15 + Math.random() * 45;
+            state.dustPuffs.push({
+                x: x + (Math.random() - 0.5) * 18,
+                y: y + (Math.random() - 0.5) * 18,
+                vx: Math.cos(ang) * spd,
+                vy: Math.sin(ang) * spd,
+                radius: 10 + Math.random() * 14,
+                alpha: 0.58,
+                life: 0.45
+            });
+        }
+    }
+
+    function resolveBagCollisions() {
+        const radius = BOARD.bagRadius * 1.72;
+        for (let iter = 0; iter < 3; iter++) {
+            for (let i = 0; i < state.bags.length; i++) {
+                const a = state.bags[i];
+                if (a.inHole) continue;
+                for (let j = i + 1; j < state.bags.length; j++) {
+                    const b = state.bags[j];
+                    if (b.inHole) continue;
+
+                    const dx = b.x - a.x;
+                    const dy = b.y - a.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > 0.001 && dist < radius) {
+                        const overlap = (radius - dist) * 0.5;
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+                        a.x -= nx * overlap;
+                        a.y -= ny * overlap;
+                        b.x += nx * overlap;
+                        b.y += ny * overlap;
+
+                        const rvx = a.vx - b.vx;
+                        const rvy = a.vy - b.vy;
+                        const normalVel = rvx * nx + rvy * ny;
+                        if (normalVel > 0) {
+                            const impulse = normalVel * 0.78;
+                            a.vx -= nx * impulse * 0.65;
+                            a.vy -= ny * impulse * 0.65;
+                            b.vx += nx * impulse * 0.85;
+                            b.vy += ny * impulse * 0.85;
+                            b.vAngle = (Math.random() - 0.5) * 3;
+                            if (impulse > 35) Sound.playBagBump();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function updatePhysics(dt) {
+        state.camera.x += (state.camera.targetX - state.camera.x) * Math.min(1, dt * 6.5);
+        state.camera.y += (state.camera.targetY - state.camera.y) * Math.min(1, dt * 6.5);
+        state.camera.zoom += (state.camera.targetZoom - state.camera.zoom) * Math.min(1, dt * 6.5);
+
+        for (let i = state.dustPuffs.length - 1; i >= 0; i--) {
+            const p = state.dustPuffs[i];
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.radius += 12 * dt;
+            p.life -= dt;
+            p.alpha = Math.max(0, (p.life / 0.45) * 0.55);
+            if (p.life <= 0) state.dustPuffs.splice(i, 1);
+        }
+
+        if (state.phase === 'aiming' && state.mode === 'bot' && state.turn === 'blue') {
+            state.botTimer -= dt;
+            if (state.botTimer <= 0) {
+                executeBotThrow();
+            }
+        }
+
+        if (state.phase === 'flying' && state.activeBag) {
+            const bag = state.activeBag;
+            const gravity = 980;
+            bag.x += bag.vx * dt;
+            bag.y += bag.vy * dt;
+            bag.z += bag.vz * dt;
+            bag.vz -= gravity * dt;
+            bag.angle += bag.vAngle * dt;
+
+            state.trailPoints.push({ x: bag.x, y: bag.y, z: bag.z });
+            if (state.trailPoints.length > 14) state.trailPoints.shift();
+
+            if (bag.x > 0 && bag.vz < 0) {
+                setCameraForBoardZoom();
+            }
+
+            if (bag.z <= 0 && bag.vz < 0) {
+                bag.z = 0;
+                bag.vz = 0;
+                state.trailPoints = [];
+
+                bag.vx *= 0.42;
+                bag.vy *= 0.42;
+                bag.vAngle *= 0.35;
+
+                state.bags.push(bag);
+                state.activeBag = null;
+                state.phase = 'sliding';
+
+                const landedOnBoard = checkBagOnBoard(bag);
+                Sound.playBoardHit(landedOnBoard);
+                spawnDustPuffs(bag.x, bag.y);
+                setCameraForBoardZoom();
+            }
+        }
+
+        if (state.phase === 'sliding') {
+            let anyMoving = false;
+
+            for (const b of state.bags) {
+                if (b.inHole) {
+                    b.holeScale = Math.max(0, b.holeScale - dt * 4.5);
+                    if (b.holeScale > 0.02) anyMoving = true;
+                    continue;
+                }
+
+                const speed = Math.hypot(b.vx, b.vy);
+                if (speed > 2.5) {
+                    anyMoving = true;
+                    b.x += b.vx * dt;
+                    b.y += b.vy * dt;
+                    b.angle += b.vAngle * dt;
+
+                    b.onBoard = checkBagOnBoard(b);
+                    const friction = b.onBoard ? 360 : 620;
+                    const newSpeed = Math.max(0, speed - friction * dt);
+                    b.vx = (b.vx / speed) * newSpeed;
+                    b.vy = (b.vy / speed) * newSpeed;
+                    b.vAngle *= 0.92;
+                } else {
+                    b.vx = 0;
+                    b.vy = 0;
+                    b.vAngle = 0;
+                }
+
+                const distToHole = Math.hypot(b.x - COURT.holeX, b.y - COURT.holeY);
+                if (distToHole < BOARD.holeRadius - 4 && speed < 440) {
+                    b.inHole = true;
+                    b.onBoard = false;
+                    b.vx = 0;
+                    b.vy = 0;
+                    b.x = COURT.holeX;
+                    b.y = COURT.holeY;
+                    Sound.playHoleScore();
+                    spawnScorePopup('+3 HOLE!', b.team === 'red' ? COLORS.redBag : COLORS.blueBag);
+                    updateScoreHUD();
+                    anyMoving = true;
+                } else if (distToHole < BOARD.holeRadius + 10 && distToHole >= BOARD.holeRadius - 4) {
+                    const pull = 38 * dt;
+                    b.vx += ((COURT.holeX - b.x) / distToHole) * pull;
+                    b.vy += ((COURT.holeY - b.y) / distToHole) * pull;
+                }
+
+                b.onBoard = checkBagOnBoard(b);
+            }
+
+            resolveBagCollisions();
+            updateScoreHUD();
+
+            if (!anyMoving) {
+                state.phase = 'zoom_inspect';
+                const lastBag = state.bags[state.bags.length - 1];
+                if (lastBag && !lastBag.inHole && lastBag.onBoard) {
+                    spawnScorePopup('+1', lastBag.team === 'red' ? COLORS.redBag : COLORS.blueBag);
+                }
+                setTimeout(() => {
+                    if (state.phase === 'zoom_inspect') {
+                        advanceTurnOrRound();
+                    }
+                }, 900);
+            }
+        }
+    }
+
+    // ==========================================
+    // DRAWING / RENDERING
+    // ==========================================
+    function drawRoundedRect(x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+    }
+
+    function drawBeanBagShape(x, y, radius, angle, team, scale = 1, drawShadow = true) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+        ctx.rotate(angle);
+
+        const r = radius;
+
+        if (drawShadow) {
+            ctx.save();
+            // Since world is rotated -90 deg, -X is screen down and +Y is screen right
+            ctx.translate(-5, 4);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+            beginPinchedPillowPath(r);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        ctx.fillStyle = team === 'red' ? COLORS.redBag : COLORS.blueBag;
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 4.2;
+        ctx.lineJoin = 'round';
+        beginPinchedPillowPath(r);
+        ctx.fill();
+
+        ctx.fillStyle = team === 'red' ? COLORS.redBagDark : COLORS.blueBagDark;
+        ctx.beginPath();
+        ctx.arc(0, r * 0.45, r * 0.42, 0, Math.PI, false);
+        ctx.fill();
+
+        beginPinchedPillowPath(r);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2.6;
+        ctx.lineCap = 'round';
+        const c = r * 0.58;
+        ctx.beginPath();
+        ctx.moveTo(-c, -c * 0.65);
+        ctx.lineTo(-c * 0.65, -c * 0.45);
+        ctx.moveTo(c, -c * 0.65);
+        ctx.lineTo(c * 0.65, -c * 0.45);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    function beginPinchedPillowPath(r) {
+        const c = r * 1.06;
+        const pinch = r * 0.78;
+        ctx.beginPath();
+        ctx.moveTo(-c, -c);
+        ctx.quadraticCurveTo(0, -pinch, c, -c);
+        ctx.quadraticCurveTo(pinch, 0, c, c);
+        ctx.quadraticCurveTo(0, pinch, -c, c);
+        ctx.quadraticCurveTo(-pinch, 0, -c, -c);
+        ctx.closePath();
+    }
+
+    function drawCornholeBoard() {
+        const bx = COURT.boardFrontX;
+        const by = -BOARD.height / 2;
+        const bw = BOARD.width;
+        const bh = BOARD.height;
+        const br = BOARD.cornerRadius;
+
+        ctx.save();
+
+        // 1. Slanted 3D Drop Shadow (shifted toward screen bottom-right: -X, +Y)
+        const sX = -10;
+        const sY = 12;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.20)';
+        drawRoundedRect(bx + sX, by + sY, bw, bh, br);
+        ctx.fill();
+
+        // 2. Two Back Yellow Feet/Pegs sticking out of the top/back edge (X = bx + bw)
+        const pegW = 14;
+        const pegH = 34;
+        const pegPositions = [by + 24, by + bh - 24 - pegH];
+        for (const py of pegPositions) {
+            ctx.fillStyle = COLORS.boardYellowEdge;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.rect(bx + bw - 2, py, pegW, pegH);
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        // 3. Board Clipped Interior Stripes
+        ctx.save();
+        drawRoundedRect(bx, by, bw, bh, br);
+        ctx.clip();
+
+        ctx.fillStyle = COLORS.boardTeal;
+        ctx.fillRect(bx, by, bw, bh);
+
+        const yellowThickness = 22;
+        const blueThickness = 22;
+
+        ctx.fillStyle = COLORS.boardYellowEdge;
+        ctx.fillRect(bx, by, bw, yellowThickness);
+        ctx.fillRect(bx, by + bh - yellowThickness, bw, yellowThickness);
+
+        ctx.fillStyle = COLORS.boardBlueStripe;
+        ctx.fillRect(bx, by + yellowThickness, bw, blueThickness);
+        ctx.fillRect(bx, by + bh - yellowThickness - blueThickness, bw, blueThickness);
+
+        ctx.restore();
+
+        // 4. Board Thick Black Outer Border
+        drawRoundedRect(bx, by, bw, bh, br);
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 8;
+        ctx.stroke();
+
+        // 5. The Cornhole
+        const hx = COURT.holeX;
+        const hy = COURT.holeY;
+        const hr = BOARD.holeRadius;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(hx, hy, hr, 0, Math.PI * 2);
+        ctx.clip();
+
+        ctx.fillStyle = COLORS.holeBrown;
+        ctx.fillRect(hx - hr, hy - hr, hr * 2, hr * 2);
+
+        ctx.strokeStyle = COLORS.holeInnerShadow;
+        ctx.lineWidth = 14;
+        ctx.beginPath();
+        ctx.arc(hx - 5, hy + 4, hr, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.beginPath();
+        ctx.arc(hx, hy, hr, 0, Math.PI * 2);
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 7.5;
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    function drawFlyingTrail(bag) {
+        if (state.trailPoints.length < 2) return;
+        const tail = state.trailPoints[0];
+        const headX = bag.x + bag.z * 0.32;
+        const headY = bag.y;
+        const tailX = tail.x + tail.z * 0.32;
+        const tailY = tail.y;
+
+        const dx = headX - tailX;
+        const dy = headY - tailY;
+        const len = Math.hypot(dx, dy);
+        if (len < 8) return;
+
+        const nx = -dy / len;
+        const ny = dx / len;
+        const halfWidth = BOARD.bagRadius * 0.72;
+
+        ctx.save();
+        ctx.fillStyle = bag.team === 'red'
+            ? 'rgba(246, 91, 82, 0.38)'
+            : 'rgba(0, 184, 255, 0.38)';
+        ctx.beginPath();
+        ctx.moveTo(tailX, tailY);
+        ctx.lineTo(headX + nx * halfWidth, headY + ny * halfWidth);
+        ctx.lineTo(headX - nx * halfWidth, headY - ny * halfWidth);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function drawAimingGuide() {
+        if (!state.drag.active || state.phase !== 'aiming' || !state.activeBag) return;
+
+        let dx = state.drag.currX - state.drag.startX;
+        let dy = state.drag.currY - state.drag.startY;
+        if (Math.hypot(dx, dy) < 18) return;
+
+        if (dx < -15) {
+            dx = -dx * 1.35;
+            dy = -dy * 1.35;
+        }
+
+        const pullPower = Math.min(1.32, Math.max(0.48, Math.hypot(dx, dy) / 175));
+        const angle = Math.max(-0.48, Math.min(0.48, Math.atan2(dy, Math.max(30, dx))));
+
+        const startX = state.activeBag.x;
+        const startY = state.activeBag.y;
+        const maxDist = 240 * pullPower;
+
+        ctx.save();
+        for (let i = 1; i <= 6; i++) {
+            const t = i / 6;
+            const px = startX + Math.cos(angle) * (maxDist * t);
+            const py = startY + Math.sin(angle) * (maxDist * t);
+            const r = (1 - t * 0.45) * 7;
+
+            ctx.fillStyle = state.turn === 'red'
+                ? `rgba(246, 91, 82, ${0.85 - t * 0.6})`
+                : `rgba(0, 184, 255, ${0.85 - t * 0.6})`;
+            ctx.beginPath();
+            ctx.arc(px, py, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    function drawCornerBagHUD() {
+        // Top-Left HUD (shifted down slightly to clear buttons): Red Remaining Bags
+        drawBagStackBadge(16, 72, state.redBagsLeft, 'red');
+
+        // Top-Right HUD (aligned with Red): Blue Remaining Bags
+        drawBagStackBadge(viewportW - 148, 72, state.blueBagsLeft, 'blue');
+    }
+
+    function drawBagStackBadge(x, y, count, team) {
+        ctx.save();
+        ctx.fillStyle = COLORS.hudBox;
+        const w = 132;
+        const h = 52;
+        const r = 18;
+        drawRoundedRect(x, y, w, h, r);
+        ctx.fill();
+
+        const startX = x + 36;
+        const centerY = y + h / 2;
+        for (let i = 0; i < count; i++) {
+            drawBeanBagShape(startX + i * 19, centerY, 12.5, 0, team, 1, false);
+        }
+        ctx.restore();
+    }
+
+    function render() {
+        // 1. Outer Salmon Background
+        ctx.fillStyle = COLORS.outerSalmon;
+        ctx.fillRect(0, 0, viewportW, viewportH);
+
+        ctx.save();
+        // Apply Camera Transform with -90deg rotation so the court runs Top-to-Bottom!
+        const cx = viewportW / 2;
+        const cy = viewportH / 2;
+        const z = baseScale * state.camera.zoom;
+        ctx.translate(cx, cy);
+        ctx.scale(z, z);
+        ctx.rotate(-Math.PI / 2);
+        ctx.translate(-state.camera.x, -state.camera.y);
+
+        // 2. Main Sandy Peach Court Floor + Thick Black Borders
+        const courtW = COURT.halfLength * 2;
+        const courtH = COURT.halfWidth * 2;
+        ctx.fillStyle = COLORS.courtSand;
+        ctx.fillRect(-COURT.halfLength, -COURT.halfWidth, courtW, courtH);
+
+        ctx.fillStyle = COLORS.borderBlack;
+        ctx.fillRect(-COURT.halfLength, -COURT.halfWidth - 14, courtW, 14);
+        ctx.fillRect(-COURT.halfLength, COURT.halfWidth, courtW, 14);
+        ctx.fillRect(-COURT.halfLength - 14, -COURT.halfWidth - 14, 14, courtH + 28);
+        ctx.fillRect(COURT.halfLength, -COURT.halfWidth - 14, 14, courtH + 28);
+
+        // 3. Active Thrower's Soft Orange Launch Circle (Bottom) + Dark Slate Foul Line
+        if (state.phase === 'aiming' || state.phase === 'flying') {
+            ctx.fillStyle = COLORS.launchPad;
+            ctx.beginPath();
+            ctx.arc(COURT.launchX, COURT.launchY, COURT.launchRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = COLORS.foulLine;
+            ctx.lineWidth = 18;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(COURT.foulLineX, -COURT.foulLineHalfLen);
+            ctx.lineTo(COURT.foulLineX, COURT.foulLineHalfLen);
+            ctx.stroke();
+        }
+
+        // 4. Bags that landed ON THE FLOOR
+        for (const b of state.bags) {
+            if (!b.onBoard && !b.inHole) {
+                drawBeanBagShape(b.x, b.y, BOARD.bagRadius, b.angle, b.team);
+            }
+        }
+
+        // 5. The Cornhole Board (Top)
+        drawCornholeBoard();
+
+        // 6. Bags shrinking into the hole + Bags resting ON THE BOARD
+        for (const b of state.bags) {
+            if (b.inHole && b.holeScale > 0.02) {
+                drawBeanBagShape(b.x, b.y, BOARD.bagRadius, b.angle, b.team, b.holeScale, false);
+            } else if (b.onBoard && !b.inHole) {
+                drawBeanBagShape(b.x, b.y, BOARD.bagRadius, b.angle, b.team);
+            }
+        }
+
+        // 7. Landing Dust Puffs
+        for (const p of state.dustPuffs) {
+            ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // 8. Aiming Trajectory Dots
+        drawAimingGuide();
+
+        // 9. Active Bag (Aiming on Launch Pad OR Flying Through Air)
+        if (state.activeBag) {
+            const b = state.activeBag;
+            if (state.phase === 'flying') {
+                const shadowScale = Math.max(0.55, 1 - b.z / 420);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
+                ctx.beginPath();
+                ctx.arc(b.x - b.z * 0.25, b.y, BOARD.bagRadius * shadowScale, 0, Math.PI * 2);
+                ctx.fill();
+
+                drawFlyingTrail(b);
+
+                const airScale = 1 + (b.z / 260) * 0.42;
+                drawBeanBagShape(b.x + b.z * 0.32, b.y, BOARD.bagRadius, b.angle, b.team, airScale, false);
+            } else {
+                drawBeanBagShape(b.x, b.y, BOARD.bagRadius, b.angle, b.team, 1, true);
+            }
+        }
+
+        ctx.restore();
+
+        // 10. Screen-Space Corner Remaining Bag Counters
+        drawCornerBagHUD();
+    }
+
+    // ==========================================
+    // UI BUTTON LISTENERS
+    // ==========================================
+    document.getElementById('btnVsBot').addEventListener('click', () => startNewMatch('bot'));
+    document.getElementById('btn2Player').addEventListener('click', () => startNewMatch('2p'));
+    document.getElementById('playAgainBtn').addEventListener('click', () => startNewMatch(state.mode));
+    document.getElementById('mainMenuBtn').addEventListener('click', () => {
+        winModal.classList.add('hidden');
+        menuModal.classList.remove('hidden');
+    });
+    document.getElementById('exitBtn').addEventListener('click', () => {
+        state.phase = 'menu';
+        turnGlowEl.className = 'turn-glow glow-none';
+        menuModal.classList.remove('hidden');
+    });
+
+    document.querySelectorAll('.diff-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            state.botDifficulty = btn.dataset.diff;
+            document.querySelectorAll('.diff-btn').forEach(b => {
+                b.className = 'diff-btn px-3 py-1 rounded-lg border-2 border-black bg-white text-gray-800';
+            });
+            btn.className = 'diff-btn px-3 py-1 rounded-lg border-2 border-black bg-[#FDB927] text-black';
+        });
+    });
+
+    document.querySelectorAll('.target-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            state.winTarget = parseInt(btn.dataset.target, 10);
+            document.getElementById('winTargetDisplay').textContent = state.winTarget;
+            document.querySelectorAll('.target-btn').forEach(b => {
+                b.className = 'target-btn px-3 py-1 rounded-lg border-2 border-black bg-white text-gray-800';
+            });
+            btn.className = 'target-btn px-3 py-1 rounded-lg border-2 border-black bg-[#48C5A5] text-black';
+        });
+    });
+
+    layoutBtn.addEventListener('click', () => {
+        state.viewStyle = state.viewStyle === 'landscape' ? 'classic' : 'landscape';
+        layoutBtnLabel.textContent = state.viewStyle === 'landscape' ? 'Full Court' : 'Close Zoom';
+        if (state.phase === 'aiming') setCameraForAiming();
+    });
+
+    soundBtn.addEventListener('click', () => {
+        Sound.enabled = !Sound.enabled;
+        soundOnIcon.classList.toggle('hidden', !Sound.enabled);
+        soundOffIcon.classList.toggle('hidden', Sound.enabled);
+    });
+
+    // ==========================================
+    // MAIN GAME LOOP
+    // ==========================================
+    let lastTime = performance.now();
+    function gameLoop(now) {
+        const dt = Math.min(0.033, (now - lastTime) / 1000);
+        lastTime = now;
+
+        updatePhysics(dt);
+        render();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    requestAnimationFrame(gameLoop);
+};
+</script>
+</body>
+</html>
